@@ -166,6 +166,8 @@ def create_generation_tasks(
 
     for task in tasks:
         session.refresh(task)
+        if is_seedance_configured():
+            submit_seedance_generation_task.delay(str(task.id))
     return tasks
 
 

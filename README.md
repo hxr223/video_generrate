@@ -53,7 +53,7 @@ Run the web app:
 Run the worker:
 
 ```bash
-celery -A apps.worker.app.celery_app worker --loglevel=info
+./scripts/start-worker.sh
 ```
 
 Run tests:
@@ -101,6 +101,7 @@ The first internal pipeline is Seedance-only for generation and FFmpeg for assem
 - `POST /projects/{project_id}/prompt/optimize` optimizes the project brief into a Seedance-ready master prompt.
 - `POST /projects/{project_id}/shots/plan` creates Seedance-ready shot prompts from the project brief.
 - `POST /projects/{project_id}/generation-tasks` queues local Seedance generation tasks.
+- When `ARK_API_KEY` is configured, generation tasks are automatically dispatched to the Celery worker.
 - `POST /projects/{project_id}/generation-tasks/{task_id}/submit` dispatches a worker job to submit a Seedance task.
 - `POST /projects/{project_id}/generation-tasks/{task_id}/poll` dispatches a worker job to poll a Seedance task.
 - `POST /projects/{project_id}/assets` registers generated or uploaded media assets.

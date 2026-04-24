@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     ark_api_key: str | None = None
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
     seedance_model: str = "doubao-seedance-1-0-pro-250528"
-    seedance_api_base_url: str | None = None
+    seedance_api_base_url: str | None = "https://operator.las.cn-beijing.volces.com/api/v1"
     seedance_submit_path: str = "/contents/generations/tasks"
     seedance_query_path_template: str = "/contents/generations/tasks/{task_id}"
     seedance_poll_interval_seconds: int = 10

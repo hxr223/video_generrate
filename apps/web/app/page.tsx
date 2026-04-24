@@ -51,6 +51,9 @@ type GenerationTask = {
   shot_id: string | null;
   model: string;
   status: string;
+  provider_task_id: string | null;
+  result_asset_id: string | null;
+  error_message: string | null;
   request_payload: Record<string, unknown>;
 };
 
@@ -65,6 +68,8 @@ type RenderJob = {
   id: string;
   status: string;
   profile: string;
+  output_uri: string | null;
+  error_message: string | null;
   ffmpeg_plan: {
     profile?: string;
     commands?: Array<{ name: string; argv: string[] }>;
@@ -131,7 +136,7 @@ export default function Home() {
     { label: "项目", detail: "标题、主题、脚本和画幅", icon: Clapperboard, done: Boolean(selectedProject) },
     { label: "提示词优化", detail: "生成适合 Seedance 的主提示词", icon: Sparkles, done: Boolean(selectedProject?.optimized_prompt) },
     { label: "Seedance 分镜", detail: "自动拆成可生成的镜头提示词", icon: Layers3, done: shots.length > 0 },
-    { label: "生成任务", detail: "火山方舟 Seedance 本地排队", icon: Sparkles, done: tasks.length > 0 },
+    { label: "生成任务", detail: "火山方舟 Seedance 提交与轮询", icon: Sparkles, done: tasks.length > 0 },
     { label: "时间线", detail: "镜头顺序、字幕、音乐和转场", icon: Film, done: timelines.length > 0 },
     { label: "FFmpeg 渲染", detail: "生成可执行的专业剪辑渲染计划", icon: Play, done: renderJobs.length > 0 }
   ];
@@ -208,7 +213,7 @@ export default function Home() {
     }
   }
 
-  async function runPipelineStep(step: "optimize" | "plan" | "tasks" | "timeline" | "render") {
+  async function runPipelineStep(step: "optimize" | "plan" | "tasks" | "submitTasks" | "timeline" | "render" | "runRender") {
     if (!selectedProject) {
       setError("请先创建或选择一个项目。");
       return;
@@ -240,7 +245,21 @@ export default function Home() {
           method: "POST",
           body: JSON.stringify({})
         });
-        setNotice("已创建 Seedance 生成任务。");
+        setNotice("已创建 Seedance 生成任务；如果 worker 正在运行，会自动提交。");
+      }
+
+      if (step === "submitTasks") {
+        await Promise.all(
+          tasks
+            .filter((task) => task.status === "queued" || task.status === "failed")
+            .map((task) =>
+              fetchJson(`${apiBaseUrl}/projects/${selectedProject.id}/generation-tasks/${task.id}/submit`, {
+                method: "POST",
+                body: JSON.stringify({})
+              })
+            )
+        );
+        setNotice("已手动提交 Seedance 任务到 worker。");
       }
 
       if (step === "timeline") {
@@ -257,6 +276,18 @@ export default function Home() {
           body: JSON.stringify({ profile: selectedProject.target_ratio === "16:9" ? "landscape_1080p" : "social_1080p" })
         });
         setNotice("已创建 FFmpeg 渲染计划。");
+      }
+
+      if (step === "runRender") {
+        const latestRenderJob = renderJobs[0];
+        if (!latestRenderJob) {
+          throw new Error("Render job missing");
+        }
+        await fetchJson(`${apiBaseUrl}/projects/${selectedProject.id}/render-jobs/${latestRenderJob.id}/run`, {
+          method: "POST",
+          body: JSON.stringify({})
+        });
+        setNotice("已提交 FFmpeg 渲染任务到 worker。");
       }
 
       await refreshPipeline(selectedProject.id);
@@ -448,6 +479,10 @@ export default function Home() {
                 <Sparkles size={17} />
                 创建任务
               </button>
+              <button type="button" onClick={() => runPipelineStep("submitTasks")} disabled={isPipelineBusy || tasks.length === 0}>
+                <Upload size={17} />
+                提交生成
+              </button>
               <button type="button" onClick={() => runPipelineStep("timeline")} disabled={isPipelineBusy || shots.length === 0}>
                 <Film size={17} />
                 生成时间线
@@ -455,6 +490,10 @@ export default function Home() {
               <button type="button" onClick={() => runPipelineStep("render")} disabled={isPipelineBusy || timelines.length === 0}>
                 <Play size={17} />
                 渲染计划
+              </button>
+              <button type="button" onClick={() => runPipelineStep("runRender")} disabled={isPipelineBusy || renderJobs.length === 0}>
+                <Play size={17} />
+                执行渲染
               </button>
             </div>
 
@@ -539,7 +578,7 @@ export default function Home() {
               <div>
                 <CheckCircle2 size={18} />
                 生成任务
-                <span>{tasks.length} 个</span>
+                <span>{tasks.filter((task) => task.status === "succeeded").length}/{tasks.length} 成功</span>
               </div>
               <div>
                 <CheckCircle2 size={18} />
@@ -594,6 +633,8 @@ export default function Home() {
                     <b>{job.profile}</b>
                     <span>{statusLabels[job.status] ?? job.status}</span>
                     <p>{job.ffmpeg_plan.commands?.map((command) => command.name).join(" / ")}</p>
+                    {job.output_uri ? <span>{job.output_uri}</span> : null}
+                    {job.error_message ? <span>{job.error_message}</span> : null}
                   </article>
                 ))}
               </div>
