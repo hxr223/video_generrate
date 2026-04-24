@@ -1,0 +1,21 @@
+name: video-platform
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pip
+  - ffmpeg
+  - pip:
+      - alembic>=1.15
+      - boto3>=1.37
+      - celery[redis]>=5.4
+      - fastapi[standard]>=0.115
+      - httpx>=0.28
+      - pillow>=11.0
+      - psycopg[binary]>=3.2
+      - pydantic-settings>=2.8
+      - pysubs2>=1.7
+      - python-dotenv>=1.0
+      - sqlalchemy>=2.0
+      - uvicorn[standard]>=0.34

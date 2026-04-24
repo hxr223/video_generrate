@@ -1,0 +1,591 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f7f3;
+  --surface: #ffffff;
+  --surface-strong: #f9faf8;
+  --text: #17211b;
+  --muted: #657069;
+  --line: #dfe5dc;
+  --primary: #136f63;
+  --primary-strong: #0d4f47;
+  --accent: #b95e31;
+  --blue: #285f91;
+  --success: #17804a;
+  --shadow: 0 18px 50px rgba(27, 42, 35, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+select {
+  touch-action: manipulation;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(19, 111, 99, 0.28);
+  outline-offset: 2px;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 296px minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  border-right: 1px solid var(--line);
+  background: #fbfcfa;
+  padding: 24px;
+}
+
+.brand,
+.topbar,
+.sectionHeader,
+.serviceRow,
+.workflowItem,
+.projectItem,
+.laneList div {
+  display: flex;
+  align-items: center;
+}
+
+.brand {
+  gap: 12px;
+}
+
+.brandMark,
+.workflowIcon,
+.thumbnail {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.brandMark {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: 0;
+  line-height: 1.15;
+}
+
+h1 {
+  font-size: 20px;
+}
+
+h2 {
+  font-size: 28px;
+}
+
+h3 {
+  font-size: 20px;
+}
+
+.navList {
+  display: grid;
+  gap: 8px;
+}
+
+.navItem {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.navItem.active,
+.navItem:hover {
+  background: #eaf3ef;
+  color: var(--primary-strong);
+}
+
+.servicePanel,
+.createPanel,
+.queuePanel,
+.projectsPanel,
+.audioPanel,
+.timelinePanel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.servicePanel {
+  margin-top: auto;
+  padding: 16px;
+}
+
+.panelTitle {
+  margin: 0 0 12px;
+  font-weight: 700;
+}
+
+.serviceList {
+  display: grid;
+  gap: 12px;
+}
+
+.serviceRow {
+  gap: 10px;
+}
+
+.serviceRow strong,
+.serviceRow span {
+  display: block;
+}
+
+.serviceRow strong {
+  font-size: 14px;
+}
+
+.serviceRow span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 0 4px rgba(23, 128, 74, 0.12);
+}
+
+.content {
+  min-width: 0;
+  padding: 28px;
+}
+
+.topbar {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.iconButton,
+.primaryButton,
+.ghostButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.iconButton {
+  width: 44px;
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.primaryButton {
+  color: #ffffff;
+  background: var(--primary);
+  padding: 0 16px;
+}
+
+.primaryButton:hover {
+  background: var(--primary-strong);
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.ghostButton {
+  background: transparent;
+  color: var(--primary);
+  padding: 0 8px;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 18px;
+}
+
+.createPanel,
+.queuePanel,
+.projectsPanel,
+.audioPanel,
+.timelinePanel {
+  padding: 18px;
+}
+
+.createPanel {
+  grid-row: span 3;
+}
+
+.sectionHeader {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.sectionHeader.compact {
+  margin-bottom: 14px;
+}
+
+.briefForm {
+  display: grid;
+  gap: 16px;
+}
+
+.notice,
+.emptyState {
+  border-radius: 8px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.notice.success {
+  border: 1px solid rgba(23, 128, 74, 0.24);
+  background: #e9f7ef;
+  color: var(--success);
+}
+
+.notice.error {
+  border: 1px solid rgba(185, 69, 49, 0.24);
+  background: #fff0ed;
+  color: #9a3828;
+}
+
+.emptyState {
+  border: 1px dashed var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
+.briefForm label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+textarea {
+  min-height: 168px;
+  resize: vertical;
+}
+
+.workflowList,
+.projectList,
+.laneList,
+.detailGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.workflowItem,
+.projectItem,
+.laneList div,
+.detailItem {
+  min-height: 64px;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  padding: 10px;
+}
+
+.workflowIcon,
+.thumbnail {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #edf5f2;
+}
+
+.workflowItem strong,
+.workflowItem span,
+.projectItem strong,
+.projectItem span,
+.detailItem b,
+.detailItem span {
+  display: block;
+}
+
+.workflowItem > div:nth-child(2),
+.projectItem > div:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.workflowItem strong,
+.projectItem strong,
+.detailItem b {
+  overflow-wrap: anywhere;
+}
+
+.workflowItem span,
+.projectItem span,
+.detailItem span,
+.detailItem p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.actionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.actionGrid button,
+.projectButton {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.actionGrid button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.actionGrid button:hover,
+.projectButton:hover,
+.projectButton.selected {
+  border-color: rgba(19, 111, 99, 0.35);
+  background: #eaf3ef;
+}
+
+.actionGrid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.projectButton {
+  width: 100%;
+  text-align: left;
+}
+
+.timelinePanel {
+  grid-column: 1 / -1;
+}
+
+.detailGrid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.8fr);
+}
+
+.detailGrid > div {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.detailGrid > div > strong {
+  font-size: 15px;
+}
+
+.detailGrid > div > span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.detailItem {
+  display: block;
+}
+
+.detailItem p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.statePill,
+.projectStatus {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.statePill.ready {
+  background: #e5f5ec;
+  color: var(--success);
+}
+
+.statePill.next {
+  background: #fff0df;
+  color: var(--accent);
+}
+
+.statePill.queued,
+.projectStatus {
+  background: #e9f0f8;
+  color: var(--blue);
+}
+
+.laneList div {
+  justify-content: space-between;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.laneList svg {
+  color: var(--success);
+}
+
+.laneList span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 1040px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .servicePanel {
+    margin-top: 0;
+  }
+
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .createPanel {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar,
+  .content {
+    padding: 18px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  h2 {
+    font-size: 24px;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+  }
+
+  .actionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionHeader {
+    align-items: flex-start;
+  }
+
+  .primaryButton {
+    width: 100%;
+  }
+
+  .workflowItem,
+  .projectItem {
+    align-items: flex-start;
+  }
+}
