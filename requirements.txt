@@ -8,5 +8,6 @@ psycopg[binary]>=3.2
 pydantic-settings>=2.8
 pysubs2>=1.7
 python-dotenv>=1.0
+pytest>=8.3
 sqlalchemy>=2.0
 uvicorn[standard]>=0.34

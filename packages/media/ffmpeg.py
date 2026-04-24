@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+from packages.core.models import Asset, Timeline
+from packages.media.storage import download_minio_uri
 
 
 EXPORT_PROFILES: dict[str, dict[str, Any]] = {
@@ -88,3 +96,108 @@ def build_ffmpeg_plan(timeline: dict[str, Any], profile_name: str) -> dict[str, 
             },
         ],
     }
+
+
+def _resolve_asset_uri(uri: str, work_dir: Path) -> Path | str:
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        return Path(parsed.path)
+    if parsed.scheme == "minio":
+        return download_minio_uri(uri, work_dir / "inputs" / Path(parsed.path).name)
+    if parsed.scheme in {"http", "https"}:
+        return uri
+    return Path(uri)
+
+
+def _run(command: list[str]) -> None:
+    subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def _probe(path: Path) -> dict[str, Any]:
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, dict):
+        raise RuntimeError("ffprobe did not return a JSON object")
+    return payload
+
+
+def render_timeline(
+    timeline: Timeline,
+    assets_by_id: dict[str, Asset],
+    profile_name: str,
+    output_dir: Path,
+) -> tuple[Path, dict[str, Any]]:
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise RuntimeError("ffmpeg and ffprobe must be available on PATH")
+
+    profile = EXPORT_PROFILES.get(profile_name, EXPORT_PROFILES["social_1080p"])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    normalized_dir = output_dir / "normalized"
+    normalized_dir.mkdir(parents=True, exist_ok=True)
+
+    segments = [segment for segment in timeline.segments if segment.get("asset_id")]
+    if not segments:
+        raise RuntimeError("Timeline has no segments with asset_id; cannot render.")
+
+    normalized_paths: list[Path] = []
+    scale_filter = (
+        f"scale={profile['width']}:{profile['height']}:force_original_aspect_ratio=increase,"
+        f"crop={profile['width']}:{profile['height']},fps={profile['fps']},format={profile['pixel_format']}"
+    )
+
+    for index, segment in enumerate(segments):
+        asset_id = str(segment["asset_id"])
+        asset = assets_by_id.get(asset_id)
+        if asset is None:
+            raise RuntimeError(f"Missing asset for segment: {asset_id}")
+        source = _resolve_asset_uri(asset.uri, output_dir)
+        normalized_path = normalized_dir / f"{index:03d}.mp4"
+        command = [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(source),
+            "-t",
+            str(segment.get("duration", asset.duration_seconds or 9999)),
+            "-vf",
+            scale_filter,
+            "-an",
+            "-c:v",
+            profile["video_codec"],
+            "-preset",
+            "veryfast",
+            normalized_path.as_posix(),
+        ]
+        _run(command)
+        normalized_paths.append(normalized_path)
+
+    concat_list = output_dir / "concat.txt"
+    concat_list.write_text(
+        "".join(f"file '{path.as_posix()}'\n" for path in normalized_paths),
+        encoding="utf-8",
+    )
+    output_path = output_dir / "final.mp4"
+    _run(
+        [
+            ffmpeg,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_list.as_posix(),
+            "-c",
+            "copy",
+            output_path.as_posix(),
+        ]
+    )
+    return output_path, _probe(output_path)

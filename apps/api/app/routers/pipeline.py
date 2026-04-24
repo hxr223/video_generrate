@@ -25,6 +25,11 @@ from packages.integrations.seedance import build_seedance_request, is_seedance_c
 from packages.media.ffmpeg import build_ffmpeg_plan
 from packages.timeline.planner import build_seedance_shots, build_timeline_segments, infer_timeline_duration
 from packages.timeline.prompt_optimizer import optimize_project_prompt
+from apps.worker.app.celery_app import (
+    poll_seedance_generation_task,
+    run_render_job,
+    submit_seedance_generation_task,
+)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["pipeline"])
 
@@ -171,6 +176,34 @@ def list_generation_tasks(project_id: uuid.UUID, session: Session = Depends(get_
     return list(session.scalars(statement).all())
 
 
+@router.post("/generation-tasks/{task_id}/submit", response_model=GenerationTaskRead)
+def submit_generation_task(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> GenerationTask:
+    get_project_or_404(project_id, session)
+    generation_task = session.get(GenerationTask, task_id)
+    if generation_task is None or generation_task.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation task not found")
+    submit_seedance_generation_task.delay(str(generation_task.id))
+    return generation_task
+
+
+@router.post("/generation-tasks/{task_id}/poll", response_model=GenerationTaskRead)
+def poll_generation_task(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> GenerationTask:
+    get_project_or_404(project_id, session)
+    generation_task = session.get(GenerationTask, task_id)
+    if generation_task is None or generation_task.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation task not found")
+    poll_seedance_generation_task.delay(str(generation_task.id))
+    return generation_task
+
+
 @router.post("/timelines", response_model=TimelineRead, status_code=status.HTTP_201_CREATED)
 def create_timeline(
     project_id: uuid.UUID,
@@ -273,3 +306,17 @@ def list_render_jobs(project_id: uuid.UUID, session: Session = Depends(get_sessi
     get_project_or_404(project_id, session)
     statement = select(RenderJob).where(RenderJob.project_id == project_id).order_by(RenderJob.created_at.desc())
     return list(session.scalars(statement).all())
+
+
+@router.post("/render-jobs/{render_job_id}/run", response_model=RenderJobRead)
+def run_project_render_job(
+    project_id: uuid.UUID,
+    render_job_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> RenderJob:
+    get_project_or_404(project_id, session)
+    render_job = session.get(RenderJob, render_job_id)
+    if render_job is None or render_job.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Render job not found")
+    run_render_job.delay(str(render_job.id))
+    return render_job
