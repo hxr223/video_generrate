@@ -21,6 +21,7 @@ def upgrade() -> None:
     shot_status = postgresql.ENUM("planned", "queued", "generating", "ready", "failed", name="shot_status")
     asset_kind = postgresql.ENUM(
         "seedance_video",
+        "generated_image",
         "reference_image",
         "reference_video",
         "audio",
@@ -76,6 +77,7 @@ def upgrade() -> None:
             "kind",
             postgresql.ENUM(
                 "seedance_video",
+                "generated_image",
                 "reference_image",
                 "reference_video",
                 "audio",

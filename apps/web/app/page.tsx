@@ -49,12 +49,21 @@ type Shot = {
 type GenerationTask = {
   id: string;
   shot_id: string | null;
+  provider: string;
   model: string;
   status: string;
   provider_task_id: string | null;
   result_asset_id: string | null;
   error_message: string | null;
   request_payload: Record<string, unknown>;
+};
+
+type Asset = {
+  id: string;
+  kind: string;
+  label: string;
+  uri: string;
+  duration_seconds: number | null;
 };
 
 type Timeline = {
@@ -118,6 +127,7 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [shots, setShots] = useState<Shot[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [tasks, setTasks] = useState<GenerationTask[]>([]);
   const [timelines, setTimelines] = useState<Timeline[]>([]);
   const [renderJobs, setRenderJobs] = useState<RenderJob[]>([]);
@@ -136,7 +146,8 @@ export default function Home() {
     { label: "项目", detail: "标题、主题、脚本和画幅", icon: Clapperboard, done: Boolean(selectedProject) },
     { label: "提示词优化", detail: "生成适合 Seedance 的主提示词", icon: Sparkles, done: Boolean(selectedProject?.optimized_prompt) },
     { label: "Seedance 分镜", detail: "自动拆成可生成的镜头提示词", icon: Layers3, done: shots.length > 0 },
-    { label: "生成任务", detail: "火山方舟 Seedance 提交与轮询", icon: Sparkles, done: tasks.length > 0 },
+    { label: "图片素材", detail: "Seedream 生成图进入素材库和时间线", icon: ImagePlus, done: assets.some((asset) => asset.kind === "generated_image") },
+    { label: "视频任务", detail: "火山方舟 Seedance 提交与轮询", icon: Sparkles, done: tasks.some((task) => task.provider === "volcengine_seedance") },
     { label: "时间线", detail: "镜头顺序、字幕、音乐和转场", icon: Film, done: timelines.length > 0 },
     { label: "FFmpeg 渲染", detail: "生成可执行的专业剪辑渲染计划", icon: Play, done: renderJobs.length > 0 }
   ];
@@ -158,13 +169,15 @@ export default function Home() {
   }
 
   async function refreshPipeline(projectId: string) {
-    const [nextShots, nextTasks, nextTimelines, nextRenderJobs] = await Promise.all([
+    const [nextShots, nextAssets, nextTasks, nextTimelines, nextRenderJobs] = await Promise.all([
       fetchJson<Shot[]>(`${apiBaseUrl}/projects/${projectId}/shots`),
+      fetchJson<Asset[]>(`${apiBaseUrl}/projects/${projectId}/assets`),
       fetchJson<GenerationTask[]>(`${apiBaseUrl}/projects/${projectId}/generation-tasks`),
       fetchJson<Timeline[]>(`${apiBaseUrl}/projects/${projectId}/timelines`),
       fetchJson<RenderJob[]>(`${apiBaseUrl}/projects/${projectId}/render-jobs`)
     ]);
     setShots(nextShots);
+    setAssets(nextAssets);
     setTasks(nextTasks);
     setTimelines(nextTimelines);
     setRenderJobs(nextRenderJobs);
@@ -202,6 +215,7 @@ export default function Home() {
       setProjects((current) => [project, ...current]);
       setSelectedProjectId(project.id);
       setShots([]);
+      setAssets([]);
       setTasks([]);
       setTimelines([]);
       setRenderJobs([]);
@@ -213,7 +227,9 @@ export default function Home() {
     }
   }
 
-  async function runPipelineStep(step: "optimize" | "plan" | "tasks" | "submitTasks" | "timeline" | "render" | "runRender") {
+  async function runPipelineStep(
+    step: "optimize" | "plan" | "imageTasks" | "tasks" | "submitTasks" | "timeline" | "render" | "runRender"
+  ) {
     if (!selectedProject) {
       setError("请先创建或选择一个项目。");
       return;
@@ -248,6 +264,14 @@ export default function Home() {
         setNotice("已创建 Seedance 生成任务；如果 worker 正在运行，会自动提交。");
       }
 
+      if (step === "imageTasks") {
+        await fetchJson<GenerationTask[]>(`${apiBaseUrl}/projects/${selectedProject.id}/image-generation-tasks`, {
+          method: "POST",
+          body: JSON.stringify({ attach_to_shots: true })
+        });
+        setNotice("已创建 Seedream 图片素材任务；成功后图片会自动绑定到分镜，可直接进入时间线渲染。");
+      }
+
       if (step === "submitTasks") {
         await Promise.all(
           tasks
@@ -259,7 +283,7 @@ export default function Home() {
               })
             )
         );
-        setNotice("已手动提交 Seedance 任务到 worker。");
+        setNotice("已手动提交生成任务到 worker。");
       }
 
       if (step === "timeline") {
@@ -477,7 +501,11 @@ export default function Home() {
               </button>
               <button type="button" onClick={() => runPipelineStep("tasks")} disabled={isPipelineBusy || shots.length === 0}>
                 <Sparkles size={17} />
-                创建任务
+                视频任务
+              </button>
+              <button type="button" onClick={() => runPipelineStep("imageTasks")} disabled={isPipelineBusy || shots.length === 0}>
+                <ImagePlus size={17} />
+                图片素材
               </button>
               <button type="button" onClick={() => runPipelineStep("submitTasks")} disabled={isPipelineBusy || tasks.length === 0}>
                 <Upload size={17} />
@@ -577,6 +605,11 @@ export default function Home() {
               </div>
               <div>
                 <CheckCircle2 size={18} />
+                图片素材
+                <span>{assets.filter((asset) => asset.kind === "generated_image" || asset.kind === "reference_image").length} 个</span>
+              </div>
+              <div>
+                <CheckCircle2 size={18} />
                 生成任务
                 <span>{tasks.filter((task) => task.status === "succeeded").length}/{tasks.length} 成功</span>
               </div>
@@ -625,6 +658,18 @@ export default function Home() {
                   </article>
                 ))}
               </div>
+              <div>
+                <strong>素材</strong>
+                {assets.length === 0 ? <span>暂无素材</span> : null}
+                {assets.slice(0, 8).map((asset) => (
+                  <article className="detailItem" key={asset.id}>
+                    <b>{asset.label}</b>
+                    <span>{asset.kind}{asset.duration_seconds ? ` · ${asset.duration_seconds}s` : ""}</span>
+                    <p>{asset.uri}</p>
+                  </article>
+                ))}
+              </div>
+
               <div>
                 <strong>渲染</strong>
                 {renderJobs.length === 0 ? <span>暂无渲染计划</span> : null}

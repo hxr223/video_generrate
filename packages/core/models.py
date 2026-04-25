@@ -30,6 +30,7 @@ class ShotStatus(str, enum.Enum):
 
 class AssetKind(str, enum.Enum):
     seedance_video = "seedance_video"
+    generated_image = "generated_image"
     reference_image = "reference_image"
     reference_video = "reference_video"
     audio = "audio"

@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     seedance_query_path_template: str = "/contents/generations/tasks/{task_id}"
     seedance_poll_interval_seconds: int = 10
     seedance_max_poll_attempts: int = 90
+    seedream_model: str = "doubao-seedream-4-5-251128"
+    seedream_api_base_url: str | None = "https://operator.las.cn-beijing.volces.com/api/v1"
+    seedream_submit_path: str = "/images/generations"
+    seedream_size: str = "1024x1024"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/video_platform"
     redis_url: str = "redis://localhost:6379/0"

@@ -110,6 +110,12 @@ class GenerationTaskCreate(BaseModel):
     model: str | None = Field(default=None, max_length=160)
 
 
+class ImageGenerationTaskCreate(BaseModel):
+    shot_id: uuid.UUID | None = None
+    model: str | None = Field(default=None, max_length=160)
+    attach_to_shots: bool = True
+
+
 class GenerationTaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

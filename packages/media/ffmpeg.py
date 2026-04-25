@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from packages.core.models import Asset, Timeline
+from packages.core.models import Asset, AssetKind, Timeline
 from packages.media.storage import download_minio_uri
 
 
@@ -127,6 +127,13 @@ def _probe(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _is_image_asset(asset: Asset) -> bool:
+    if asset.kind in {AssetKind.generated_image, AssetKind.reference_image}:
+        return True
+    suffix = urlparse(asset.uri).path.lower()
+    return suffix.endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"))
+
+
 def render_timeline(
     timeline: Timeline,
     assets_by_id: dict[str, Asset],
@@ -160,22 +167,43 @@ def render_timeline(
             raise RuntimeError(f"Missing asset for segment: {asset_id}")
         source = _resolve_asset_uri(asset.uri, output_dir)
         normalized_path = normalized_dir / f"{index:03d}.mp4"
-        command = [
-            ffmpeg,
-            "-y",
-            "-i",
-            str(source),
-            "-t",
-            str(segment.get("duration", asset.duration_seconds or 9999)),
-            "-vf",
-            scale_filter,
-            "-an",
-            "-c:v",
-            profile["video_codec"],
-            "-preset",
-            "veryfast",
-            normalized_path.as_posix(),
-        ]
+        duration = str(segment.get("duration", asset.duration_seconds or 9999))
+        if _is_image_asset(asset):
+            command = [
+                ffmpeg,
+                "-y",
+                "-loop",
+                "1",
+                "-t",
+                duration,
+                "-i",
+                str(source),
+                "-vf",
+                scale_filter,
+                "-an",
+                "-c:v",
+                profile["video_codec"],
+                "-preset",
+                "veryfast",
+                normalized_path.as_posix(),
+            ]
+        else:
+            command = [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(source),
+                "-t",
+                duration,
+                "-vf",
+                scale_filter,
+                "-an",
+                "-c:v",
+                profile["video_codec"],
+                "-preset",
+                "veryfast",
+                normalized_path.as_posix(),
+            ]
         _run(command)
         normalized_paths.append(normalized_path)
 

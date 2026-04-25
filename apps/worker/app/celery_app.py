@@ -17,6 +17,12 @@ from packages.integrations.seedance import (
     is_provider_terminal_failure,
     is_provider_terminal_success,
 )
+from packages.integrations.seedream import (
+    SeedreamClient,
+    SeedreamClientError,
+    extract_error_message as extract_seedream_error_message,
+    extract_image_urls,
+)
 from packages.media.ffmpeg import render_timeline
 from packages.media.storage import upload_file
 
@@ -147,6 +153,78 @@ def poll_seedance_generation_task(task_id: str, attempt: int = 1) -> dict[str, s
         countdown=settings.seedance_poll_interval_seconds,
     )
     return {"status": "running", "task_id": task_id}
+
+
+@celery_app.task(name="video_platform.submit_seedream_image_task")
+def submit_seedream_image_task(task_id: str) -> dict[str, str]:
+    task_uuid = uuid.UUID(task_id)
+    with SessionLocal() as session:
+        generation_task = session.get(GenerationTask, task_uuid)
+        if generation_task is None:
+            return {"status": "missing", "task_id": task_id}
+        if not settings.ark_api_key:
+            generation_task.status = JobStatus.failed
+            generation_task.error_message = "ARK_API_KEY is required to submit Seedream image tasks."
+            session.commit()
+            return {"status": "failed", "task_id": task_id}
+
+        generation_task.status = JobStatus.running
+        session.commit()
+
+        try:
+            response_payload = SeedreamClient().generate_image(generation_task.request_payload)
+            image_urls = extract_image_urls(response_payload)
+            if not image_urls:
+                raise SeedreamClientError(
+                    extract_seedream_error_message(response_payload) or "Seedream response did not include image URLs."
+                )
+
+            image_url = image_urls[0]
+            suffix = Path(image_url.split("?", 1)[0]).suffix.lower()
+            if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+                suffix = ".png"
+            temp_path = Path(settings.local_render_dir) / "seedream" / f"{generation_task.id}{suffix}"
+            SeedreamClient().download_image(image_url, temp_path)
+            content_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+            }.get(suffix, "image/png")
+            object_key = f"seedream/{generation_task.project_id}/{generation_task.id}{suffix}"
+            asset_uri = upload_file(temp_path, object_key, content_type=content_type)
+
+            asset = Asset(
+                project_id=generation_task.project_id,
+                kind=AssetKind.generated_image,
+                label=f"Seedream {generation_task.id}",
+                uri=asset_uri,
+                duration_seconds=generation_task.shot.duration_seconds if generation_task.shot else None,
+                metadata_json={
+                    "provider": "volcengine_seedream",
+                    "source_url": image_url,
+                    "response": response_payload,
+                },
+            )
+            session.add(asset)
+            session.flush()
+
+            generation_task.status = JobStatus.succeeded
+            generation_task.result_asset_id = asset.id
+            generation_task.request_payload = {
+                **generation_task.request_payload,
+                "provider_response": response_payload,
+            }
+            if generation_task.shot and generation_task.request_payload.get("attach_to_shot", True):
+                generation_task.shot.status = ShotStatus.ready
+                generation_task.shot.result_asset_id = asset.id
+            session.commit()
+            return {"status": "succeeded", "task_id": task_id}
+        except Exception as exc:
+            generation_task.status = JobStatus.failed
+            generation_task.error_message = str(exc)
+            session.commit()
+            return {"status": "failed", "task_id": task_id}
 
 
 @celery_app.task(name="video_platform.run_render_job")

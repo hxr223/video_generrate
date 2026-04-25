@@ -11,6 +11,7 @@ from packages.core.schemas import (
     AssetRead,
     GenerationTaskCreate,
     GenerationTaskRead,
+    ImageGenerationTaskCreate,
     PlanShotsRequest,
     PromptOptimizeRead,
     PromptOptimizeRequest,
@@ -22,6 +23,7 @@ from packages.core.schemas import (
 )
 from packages.core.settings import settings
 from packages.integrations.seedance import build_seedance_request, is_seedance_configured
+from packages.integrations.seedream import build_seedream_request, is_seedream_configured
 from packages.media.ffmpeg import build_ffmpeg_plan
 from packages.timeline.planner import build_seedance_shots, build_timeline_segments, infer_timeline_duration
 from packages.timeline.prompt_optimizer import optimize_project_prompt
@@ -29,6 +31,7 @@ from apps.worker.app.celery_app import (
     poll_seedance_generation_task,
     run_render_job,
     submit_seedance_generation_task,
+    submit_seedream_image_task,
 )
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["pipeline"])
@@ -154,6 +157,7 @@ def create_generation_tasks(
             GenerationTask(
                 project_id=project.id,
                 shot_id=shot.id,
+                provider="volcengine_seedance",
                 model=model,
                 status=JobStatus.queued,
                 request_payload=request_payload,
@@ -168,6 +172,62 @@ def create_generation_tasks(
         session.refresh(task)
         if is_seedance_configured():
             submit_seedance_generation_task.delay(str(task.id))
+    return tasks
+
+
+@router.post("/image-generation-tasks", response_model=list[GenerationTaskRead], status_code=status.HTTP_201_CREATED)
+def create_image_generation_tasks(
+    project_id: uuid.UUID,
+    payload: ImageGenerationTaskCreate,
+    session: Session = Depends(get_session),
+) -> list[GenerationTask]:
+    project = get_project_or_404(project_id, session)
+    model = payload.model or settings.seedream_model
+
+    if payload.shot_id:
+        shots = [session.get(Shot, payload.shot_id)]
+        if shots[0] is None or shots[0].project_id != project.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shot not found")
+    else:
+        shots = list(
+            session.scalars(
+                select(Shot).where(Shot.project_id == project.id).order_by(Shot.order_index.asc())
+            ).all()
+        )
+
+    if not shots:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan shots before creating image tasks")
+
+    tasks: list[GenerationTask] = []
+    for shot in shots:
+        if shot is None:
+            continue
+        shot.status = ShotStatus.queued
+        request_payload = {
+            **build_seedream_request(project, shot, model=model),
+            "attach_to_shot": payload.attach_to_shots,
+        }
+        if not is_seedream_configured():
+            request_payload["configuration_warning"] = "ARK_API_KEY is empty; image task is queued locally only."
+        tasks.append(
+            GenerationTask(
+                project_id=project.id,
+                shot_id=shot.id,
+                provider="volcengine_seedream",
+                model=model,
+                status=JobStatus.queued,
+                request_payload=request_payload,
+            )
+        )
+
+    session.add_all(tasks)
+    project.status = ProjectStatus.generating
+    session.commit()
+
+    for task in tasks:
+        session.refresh(task)
+        if is_seedream_configured():
+            submit_seedream_image_task.delay(str(task.id))
     return tasks
 
 
@@ -188,7 +248,10 @@ def submit_generation_task(
     generation_task = session.get(GenerationTask, task_id)
     if generation_task is None or generation_task.project_id != project_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generation task not found")
-    submit_seedance_generation_task.delay(str(generation_task.id))
+    if generation_task.provider == "volcengine_seedream":
+        submit_seedream_image_task.delay(str(generation_task.id))
+    else:
+        submit_seedance_generation_task.delay(str(generation_task.id))
     return generation_task
 
 

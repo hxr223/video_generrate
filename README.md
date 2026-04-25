@@ -4,7 +4,7 @@ Seedance-centered video generation platform.
 
 This repository is structured as a product platform rather than a single script:
 
-- FastAPI backend for projects, planning, generation, assets, timelines, subtitles, and exports
+- FastAPI backend for projects, planning, image/video generation, assets, timelines, subtitles, and exports
 - Celery worker for background orchestration
 - Redis and MinIO through Docker for local development
 - PostgreSQL expected to run locally for now
@@ -81,25 +81,27 @@ Implemented:
 - Rule-based Seedance prompt optimization
 - Shot planning from project briefs
 - Seedance task records and Celery worker entrypoints
+- Seedream image generation tasks that can bind generated images back to shots
 - Configurable Seedance submit/query client
 - MinIO upload/download helpers
 - Timeline generation
-- FFmpeg render planning and basic MP4 render execution
-- Pytest coverage for prompt planning, Seedance response parsing, and FFmpeg rendering
+- FFmpeg render planning and basic MP4 render execution, including still-image assets
+- Pytest coverage for prompt planning, Seedance/Seedream response parsing, and FFmpeg rendering
 - GitHub Actions CI
 
 Still in progress:
 
-- End-to-end live Seedance validation requires a real `ARK_API_KEY` and a console-enabled Seedance model.
+- End-to-end live Seedance/Seedream validation requires a real `ARK_API_KEY` and console-enabled models.
 - Advanced transitions, subtitle burn-in, BGM mixing, and render presets are planned after the basic MP4 render path.
 - Upload UI and settings UI are still placeholders.
 
 ## Current Pipeline APIs
 
-The first internal pipeline is Seedance-only for generation and FFmpeg for assembly/rendering.
+The first internal pipeline uses Seedream for generated image assets, Seedance for generated video clips, and FFmpeg for assembly/rendering.
 
 - `POST /projects/{project_id}/prompt/optimize` optimizes the project brief into a Seedance-ready master prompt.
 - `POST /projects/{project_id}/shots/plan` creates Seedance-ready shot prompts from the project brief.
+- `POST /projects/{project_id}/image-generation-tasks` queues Seedream image generation tasks and can bind generated images to shots.
 - `POST /projects/{project_id}/generation-tasks` queues local Seedance generation tasks.
 - When `ARK_API_KEY` is configured, generation tasks are automatically dispatched to the Celery worker.
 - `POST /projects/{project_id}/generation-tasks/{task_id}/submit` dispatches a worker job to submit a Seedance task.
@@ -116,6 +118,8 @@ ARK_API_KEY=your-api-key
 SEEDANCE_API_BASE_URL=https://operator.las.cn-beijing.volces.com/api/v1
 SEEDANCE_SUBMIT_PATH=/contents/generations/tasks
 SEEDANCE_QUERY_PATH_TEMPLATE=/contents/generations/tasks/{task_id}
+SEEDREAM_API_BASE_URL=https://operator.las.cn-beijing.volces.com/api/v1
+SEEDREAM_SUBMIT_PATH=/images/generations
 ```
 
 The local MinIO credentials in `docker-compose.yml` are development defaults only. Do not use them in production.
