@@ -226,7 +226,7 @@ def create_provider_generation_tasks(
                 "attach_to_shot": attach_generated_images_to_shots,
             }
             if not is_seedream_configured():
-                request_payload["configuration_warning"] = "ARK_API_KEY is empty; image task is queued locally only."
+                request_payload["configuration_warning"] = "SEEDREAM_API_KEY is empty; image task is queued locally only."
         else:
             request_payload = build_seedance_request(project, shot, model=model)
             if not is_seedance_configured():

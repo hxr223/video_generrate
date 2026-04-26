@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -16,11 +17,10 @@ class SeedreamClientError(RuntimeError):
 
 def build_seedream_request(project: Project, shot: Shot, model: str | None = None) -> dict[str, Any]:
     return {
-        "provider": "volcengine_seedream",
-        "base_url": get_seedream_base_url(),
         "model": model or settings.seedream_model,
         "prompt": shot.prompt,
         "size": settings.seedream_size,
+        "n": 1,
         "response_format": "url",
         "metadata": {
             "project_id": str(project.id),
@@ -32,7 +32,7 @@ def build_seedream_request(project: Project, shot: Shot, model: str | None = Non
 
 
 def is_seedream_configured() -> bool:
-    return bool(settings.ark_api_key)
+    return bool(settings.seedream_api_key)
 
 
 def get_seedream_base_url() -> str:
@@ -44,10 +44,10 @@ def build_submit_url() -> str:
 
 
 def _auth_headers() -> dict[str, str]:
-    if not settings.ark_api_key:
-        raise SeedreamClientError("ARK_API_KEY is required to call Seedream")
+    if not settings.seedream_api_key:
+        raise SeedreamClientError("SEEDREAM_API_KEY is required to call the image generation provider")
     return {
-        "authorization": f"Bearer {settings.ark_api_key}",
+        "authorization": f"Bearer {settings.seedream_api_key}",
         "content-type": "application/json",
     }
 
@@ -66,6 +66,7 @@ def _deep_get(payload: dict[str, Any], paths: tuple[tuple[str, ...], ...]) -> An
 
 def extract_image_urls(payload: dict[str, Any]) -> list[str]:
     candidates = (
+        _deep_get(payload, (("data",),)),
         _deep_get(payload, (("data", "images"),)),
         _deep_get(payload, (("data", "image_urls"),)),
         _deep_get(payload, (("images",),)),
@@ -80,6 +81,8 @@ def extract_image_urls(payload: dict[str, Any]) -> list[str]:
                     urls.append(item)
                 elif isinstance(item, dict):
                     value = item.get("url") or item.get("image_url")
+                    if not value and item.get("b64_json"):
+                        value = f"data:image/png;base64,{item['b64_json']}"
                     if value:
                         urls.append(str(value))
         elif isinstance(candidate, str):
@@ -134,6 +137,10 @@ class SeedreamClient:
 
     def download_image(self, image_url: str, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if image_url.startswith("data:image/"):
+            _, encoded = image_url.split(",", 1)
+            destination.write_bytes(base64.b64decode(encoded))
+            return destination
         with httpx.stream("GET", image_url, timeout=self.timeout_seconds) as response:
             response.raise_for_status()
             with destination.open("wb") as output:

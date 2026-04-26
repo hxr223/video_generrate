@@ -245,8 +245,32 @@ function formatAssetKind(kind: string): string {
   return labels[kind] ?? kind;
 }
 
-function formatProvider(provider: string): string {
-  return provider === "volcengine_seedream" ? "Seedream" : "Seedance";
+function formatProvider(provider: string, publicSettings: PublicSettings | null = null): string {
+  return provider === "volcengine_seedream" ? (publicSettings?.models.seedream ?? "图片模型") : (publicSettings?.models.seedance ?? "Seedance");
+}
+
+function isVideoAsset(asset: Asset): boolean {
+  return asset.kind.includes("video") || /\.(mp4|mov|webm)(\?.*)?$/i.test(asset.uri);
+}
+
+function isImageAsset(asset: Asset): boolean {
+  return asset.kind.includes("image") || /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(asset.uri);
+}
+
+function AssetPreview({ asset, compact = false }: { asset: Asset; compact?: boolean }) {
+  if (isVideoAsset(asset)) {
+    return (
+      <video className="assetPreviewMedia" src={asset.uri} controls={!compact} preload="metadata" playsInline>
+        当前浏览器无法预览此视频。
+      </video>
+    );
+  }
+
+  if (isImageAsset(asset)) {
+    return <img className="assetPreviewMedia" src={asset.uri} alt={asset.label} loading="lazy" />;
+  }
+
+  return asset.kind.includes("audio") ? <Music2 size={18} /> : <ImagePlus size={18} />;
 }
 
 function getProviderHealth(publicSettings: PublicSettings | null): Array<{
@@ -258,7 +282,7 @@ function getProviderHealth(publicSettings: PublicSettings | null): Array<{
     return [
       { label: "API", value: "等待连接", tone: "warning" },
       { label: "Seedance", value: "待配置", tone: "warning" },
-      { label: "Seedream", value: "待配置", tone: "warning" }
+      { label: "图片模型", value: "待配置", tone: "warning" }
     ];
   }
 
@@ -271,7 +295,7 @@ function getProviderHealth(publicSettings: PublicSettings | null): Array<{
       tone: publicSettings.providers.seedance_configured ? "online" : "warning"
     },
     {
-      label: "Seedream",
+      label: publicSettings.models.seedream,
       value: publicSettings.providers.seedream_configured ? "已配置" : "未配置",
       tone: publicSettings.providers.seedream_configured ? "online" : "warning"
     }
@@ -821,8 +845,8 @@ export default function Home() {
         });
         setNotice(
           attachGeneratedImages
-            ? "已创建 Seedream 图片任务；成功后会自动绑定回分镜。"
-            : "已创建 Seedream 图片任务；生成后只进入素材库，不自动绑定分镜。"
+            ? `已创建 ${publicSettings?.models.seedream ?? "图片模型"} 任务；成功后会自动绑定回分镜。`
+            : `已创建 ${publicSettings?.models.seedream ?? "图片模型"} 任务；生成后只进入素材库，不自动绑定分镜。`
         );
       }
 
@@ -1293,16 +1317,26 @@ export default function Home() {
                 <p className="emptyState compact">素材库还是空的，生成图片/视频任务成功后会在这里回流。</p>
               ) : (
                 assets.slice(0, 8).map((asset) => (
-                  <article className="assetTile" key={asset.id}>
+                  <button
+                    className="assetTile"
+                    key={asset.id}
+                    type="button"
+                    onClick={() => {
+                      setDetailTab("assets");
+                      setIsDetailOpen(true);
+                    }}
+                    aria-label={`预览素材 ${asset.label}`}
+                  >
                     <div className="assetTileVisual">
-                      {asset.kind.includes("video") ? <Film size={18} /> : asset.kind.includes("audio") ? <Music2 size={18} /> : <ImagePlus size={18} />}
+                      <AssetPreview asset={asset} compact />
                     </div>
                     <strong>{asset.label}</strong>
                     <span>{formatAssetKind(asset.kind)}</span>
                     <span>
                       {asset.duration_seconds ? `${asset.duration_seconds}s` : asset.width && asset.height ? `${asset.width}×${asset.height}` : "已入库"}
                     </span>
-                  </article>
+                    <span className="assetTileHint">点击预览</span>
+                  </button>
                 ))
               )}
             </div>
@@ -1339,9 +1373,9 @@ export default function Home() {
                       tone: publicSettings.providers.seedance_configured ? "online" : "warning"
                     },
                     {
-                      label: "Seedream",
-                      value: `${publicSettings.models.seedream} · ${publicSettings.models.seedream_size}`,
-                      detail: publicSettings.providers.seedream_configured ? publicSettings.services.seedream_base_url : "未配置 ARK_API_KEY",
+                      label: publicSettings.models.seedream,
+                      value: publicSettings.models.seedream_size,
+                      detail: publicSettings.providers.seedream_configured ? publicSettings.services.seedream_base_url : "未配置 SEEDREAM_API_KEY",
                       tone: publicSettings.providers.seedream_configured ? "online" : "warning"
                     },
                     {
@@ -1354,7 +1388,7 @@ export default function Home() {
                 : [
                     { label: "后端 API", value: apiBaseUrl, detail: "等待连接", tone: "warning" },
                     { label: "Seedance", value: "-", detail: "等待配置", tone: "warning" },
-                    { label: "Seedream", value: "-", detail: "等待配置", tone: "warning" },
+                    { label: "图片模型", value: "-", detail: "等待配置", tone: "warning" },
                     { label: "对象存储", value: "-", detail: "等待配置", tone: "warning" }
                   ]
               ).map((service) => (
@@ -1379,11 +1413,18 @@ export default function Home() {
               <Settings2 size={18} />
             </div>
 
+            <div className="modelSummary">
+              <span>视频模型</span>
+              <strong>{publicSettings?.models.seedance ?? "等待配置"}</strong>
+              <span>图片模型</span>
+              <strong>{publicSettings?.models.seedream ?? "等待配置"}</strong>
+            </div>
+
             <div className="settingsFields">
               <label>
                 分镜数量
                 <select value={shotCount} onChange={(event) => setShotCount(event.target.value)}>
-                  {[2, 3, 4, 5, 6].map((count) => (
+                  {[1, 2, 3, 4, 5, 6].map((count) => (
                     <option key={count} value={count}>
                       {count} 个镜头
                     </option>
@@ -1391,7 +1432,7 @@ export default function Home() {
                 </select>
               </label>
               <label>
-                Seedream 绑定策略
+                图片绑定策略
                 <select
                   value={attachGeneratedImages ? "true" : "false"}
                   onChange={(event) => setAttachGeneratedImages(event.target.value === "true")}
@@ -1628,7 +1669,7 @@ export default function Home() {
                   {tasks.map((task) => (
                     <article className="detailListCard" key={task.id}>
                       <div className="detailCardHeader">
-                        <strong>{formatProvider(task.provider)}</strong>
+                        <strong>{formatProvider(task.provider, publicSettings)}</strong>
                         <span>{statusLabels[task.status] ?? task.status}</span>
                       </div>
                       <p>{task.model}</p>
@@ -1644,13 +1685,16 @@ export default function Home() {
                   {assets.map((asset) => (
                     <article className="assetDetailCard" key={asset.id}>
                       <div className="assetDetailVisual">
-                        {asset.kind.includes("video") ? <Film size={18} /> : asset.kind.includes("audio") ? <Music2 size={18} /> : <ImagePlus size={18} />}
+                        <AssetPreview asset={asset} />
                       </div>
                       <div className="assetDetailBody">
                         <strong>{asset.label}</strong>
                         <span>{formatAssetKind(asset.kind)}</span>
                         <span>{asset.duration_seconds ? `${asset.duration_seconds}s` : asset.width && asset.height ? `${asset.width}×${asset.height}` : "已入库"}</span>
                         <p>{truncateText(asset.uri, 120)}</p>
+                        <a className="assetOpenLink" href={asset.uri} target="_blank" rel="noreferrer">
+                          完整播放原视频
+                        </a>
                       </div>
                     </article>
                   ))}

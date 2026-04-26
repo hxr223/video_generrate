@@ -13,7 +13,7 @@ from apps.api.app.main import app
 from apps.api.app.routers import pipeline as pipeline_router
 from apps.api.app.routers import settings as settings_router
 from packages.core.database import get_session
-from packages.core.models import Asset, Project, ProjectStatus, Shot, ShotStatus
+from packages.core.models import Asset, GenerationTask, JobStatus, Project, ProjectStatus, RenderJob, Shot, ShotStatus, Timeline
 from packages.core.schemas import ProjectCreate
 from packages.core.settings import settings
 
@@ -24,9 +24,20 @@ PNG_1X1 = base64.b64decode(
 
 
 class FakeSession:
-    def __init__(self, *, projects: list[Project] | None = None, shots: list[Shot] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        projects: list[Project] | None = None,
+        shots: list[Shot] | None = None,
+        generation_tasks: list[GenerationTask] | None = None,
+        render_jobs: list[RenderJob] | None = None,
+        timelines: list[Timeline] | None = None,
+    ) -> None:
         self.projects = {project.id: project for project in projects or []}
         self.shots = {shot.id: shot for shot in shots or []}
+        self.generation_tasks = {task.id: task for task in generation_tasks or []}
+        self.render_jobs = {job.id: job for job in render_jobs or []}
+        self.timelines = {timeline.id: timeline for timeline in timelines or []}
         self.assets: dict[uuid.UUID, Asset] = {}
 
     def get(self, model: type[object], object_id: uuid.UUID) -> object | None:
@@ -53,19 +64,31 @@ class FakeSession:
         if isinstance(instance, Asset) and instance.created_at is None:
             instance.created_at = datetime.now(timezone.utc)
 
-    def scalars(self, _statement: object) -> object:
+    def scalars(self, statement: object) -> object:
         class FakeScalarResult:
-            def __init__(self, projects: list[Project]) -> None:
-                self._projects = projects
+            def __init__(self, values: list[object]) -> None:
+                self._values = values
 
-            def all(self) -> list[Project]:
-                return sorted(
-                    self._projects,
-                    key=lambda project: project.created_at or datetime.min.replace(tzinfo=timezone.utc),
-                    reverse=True,
-                )
+            def all(self) -> list[object]:
+                return list(self._values)
 
-        return FakeScalarResult(list(self.projects.values()))
+        entity = statement.column_descriptions[0]["entity"]
+        if entity is Project:
+            projects = sorted(
+                self.projects.values(),
+                key=lambda project: project.created_at or datetime.min.replace(tzinfo=timezone.utc),
+                reverse=True,
+            )
+            return FakeScalarResult(projects)
+        if entity is Shot:
+            return FakeScalarResult(list(self.shots.values()))
+        if entity is GenerationTask:
+            return FakeScalarResult(list(self.generation_tasks.values()))
+        if entity is RenderJob:
+            return FakeScalarResult(list(self.render_jobs.values()))
+        if entity is Timeline:
+            return FakeScalarResult(list(self.timelines.values()))
+        return FakeScalarResult([])
 
 
 @pytest.fixture
@@ -334,6 +357,56 @@ def test_list_projects_allows_legacy_target_duration_values(client: TestClient) 
     assert len(payload) == 1
     assert payload[0]["id"] == str(legacy_project.id)
     assert payload[0]["target_duration"] == 30
+
+
+def test_list_projects_syncs_stale_failed_generation_status(client: TestClient) -> None:
+    project_id = uuid.uuid4()
+    shot_id = uuid.uuid4()
+    project = Project(
+        id=project_id,
+        title="旧生成项目",
+        topic="状态同步",
+        target_duration=30,
+        target_ratio="9:16",
+        language="zh",
+        style="commercial",
+        platform="douyin",
+        status=ProjectStatus.generating,
+        created_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+    )
+    shot = Shot(
+        id=shot_id,
+        project_id=project_id,
+        order_index=0,
+        title="镜头一",
+        prompt="prompt",
+        duration_seconds=8,
+        status=ShotStatus.queued,
+    )
+    failed_task = GenerationTask(
+        id=uuid.uuid4(),
+        project_id=project_id,
+        shot_id=shot_id,
+        provider="volcengine_seedance",
+        model="seedance",
+        status=JobStatus.failed,
+        request_payload={},
+        error_message="provider failed",
+    )
+    session = FakeSession(projects=[project], shots=[shot], generation_tasks=[failed_task])
+
+    def override_get_session() -> FakeSession:
+        return session
+
+    app.dependency_overrides[get_session] = override_get_session
+
+    response = client.get("/projects")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["status"] == "failed"
+    assert project.status == ProjectStatus.failed
 
 
 def test_project_create_still_rejects_unsupported_target_duration() -> None:

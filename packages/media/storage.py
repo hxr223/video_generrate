@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -9,10 +10,14 @@ from botocore.client import Config
 from packages.core.settings import settings
 
 
+def _client_endpoint_url() -> str:
+    return settings.minio_endpoint.replace("://localhost", "://127.0.0.1")
+
+
 def storage_client():
     return boto3.client(
         "s3",
-        endpoint_url=settings.minio_endpoint,
+        endpoint_url=_client_endpoint_url(),
         aws_access_key_id=settings.minio_access_key,
         aws_secret_access_key=settings.minio_secret_key,
         region_name=settings.minio_region,
@@ -23,9 +28,26 @@ def storage_client():
 def ensure_bucket() -> None:
     client = storage_client()
     buckets = client.list_buckets().get("Buckets", [])
-    if any(bucket.get("Name") == settings.minio_bucket for bucket in buckets):
-        return
-    client.create_bucket(Bucket=settings.minio_bucket)
+    if not any(bucket.get("Name") == settings.minio_bucket for bucket in buckets):
+        client.create_bucket(Bucket=settings.minio_bucket)
+
+    if settings.object_storage_public_base_url:
+        client.put_bucket_policy(
+            Bucket=settings.minio_bucket,
+            Policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": "*",
+                            "Action": ["s3:GetObject"],
+                            "Resource": [f"arn:aws:s3:::{settings.minio_bucket}/*"],
+                        }
+                    ],
+                }
+            ),
+        )
 
 
 def upload_file(path: Path, object_key: str, content_type: str | None = None) -> str:
