@@ -1,4 +1,5 @@
 from packages.core.models import Project
+from packages.timeline.script_generator import generate_project_script_draft
 from packages.timeline.planner import build_seedance_shots
 from packages.timeline.prompt_optimizer import optimize_project_prompt
 
@@ -41,3 +42,19 @@ def test_planner_uses_optimized_prompt_when_available() -> None:
     assert len(shots) == 4
     assert "优化后的 Seedance 主提示词" in shots[0]["prompt"]
     assert shots[0]["duration_seconds"] == 8
+
+
+def test_script_generator_builds_duration_aware_script() -> None:
+    script_text, beats = generate_project_script_draft(
+        title="咖啡店开业短视频",
+        topic="为一家现代咖啡店制作开业宣传视频",
+        target_duration=9,
+        style="commercial",
+        platform="douyin",
+        language="zh",
+    )
+
+    assert "咖啡店开业短视频" in script_text
+    assert "为一家现代咖啡店制作开业宣传视频" in script_text
+    assert "9 秒" in script_text
+    assert len(beats) == 5

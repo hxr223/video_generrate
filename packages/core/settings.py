@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "Video Generation Platform"
     app_env: str = "local"
     log_level: str = "INFO"
+    public_api_base_url: str | None = None
 
     ark_api_key: str | None = None
     ark_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"

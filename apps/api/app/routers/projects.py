@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from packages.core.database import get_session
 from packages.core.models import Project
-from packages.core.schemas import ProjectCreate, ProjectRead, ProjectUpdate
+from packages.core.schemas import ProjectCreate, ProjectRead, ProjectScriptDraftRead, ProjectScriptDraftRequest, ProjectUpdate
+from packages.timeline.script_generator import generate_project_script_draft
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -18,6 +19,19 @@ def create_project(payload: ProjectCreate, session: Session = Depends(get_sessio
     session.commit()
     session.refresh(project)
     return project
+
+
+@router.post("/script-draft", response_model=ProjectScriptDraftRead)
+def generate_script_draft(payload: ProjectScriptDraftRequest) -> ProjectScriptDraftRead:
+    script_text, beats = generate_project_script_draft(
+        title=payload.title,
+        topic=payload.topic,
+        target_duration=payload.target_duration,
+        style=payload.style,
+        platform=payload.platform,
+        language=payload.language,
+    )
+    return ProjectScriptDraftRead(script_text=script_text, beats=beats)
 
 
 @router.get("", response_model=list[ProjectRead])
@@ -61,4 +75,3 @@ def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session
     session.delete(project)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

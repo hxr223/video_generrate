@@ -5,7 +5,7 @@ from celery import Celery
 from sqlalchemy import select
 
 from packages.core.database import SessionLocal
-from packages.core.models import Asset, AssetKind, GenerationTask, JobStatus, ProjectStatus, RenderJob, ShotStatus, Timeline
+from packages.core.models import Asset, AssetKind, GenerationTask, JobStatus, Project, ProjectStatus, RenderJob, Shot, ShotStatus, Timeline
 from packages.core.settings import settings
 from packages.integrations.seedance import (
     SeedanceClient,
@@ -34,6 +34,42 @@ celery_app = Celery(
 )
 
 
+def _sync_project_status(session, project_id: uuid.UUID) -> None:
+    project = session.get(Project, project_id)
+    if project is None:
+        return
+
+    shots = list(session.scalars(select(Shot).where(Shot.project_id == project_id)).all())
+    generation_tasks = list(session.scalars(select(GenerationTask).where(GenerationTask.project_id == project_id)).all())
+    render_jobs = list(session.scalars(select(RenderJob).where(RenderJob.project_id == project_id)).all())
+    timelines = list(session.scalars(select(Timeline).where(Timeline.project_id == project_id)).all())
+
+    if any(render_job.status == JobStatus.failed for render_job in render_jobs):
+        project.status = ProjectStatus.failed
+    elif any(render_job.status in {JobStatus.queued, JobStatus.running} for render_job in render_jobs):
+        project.status = ProjectStatus.rendering
+    elif any(render_job.status == JobStatus.succeeded for render_job in render_jobs) and project.final_video_url:
+        project.status = ProjectStatus.completed
+    elif any(shot.status == ShotStatus.failed for shot in shots) or any(task.status == JobStatus.failed for task in generation_tasks):
+        project.status = ProjectStatus.failed
+    elif any(task.status in {JobStatus.queued, JobStatus.running} for task in generation_tasks):
+        project.status = ProjectStatus.generating
+    elif timelines or (shots and all(shot.status == ShotStatus.ready for shot in shots)):
+        project.status = ProjectStatus.assembling
+    elif shots:
+        project.status = ProjectStatus.planning
+    else:
+        project.status = ProjectStatus.draft
+
+
+def _mark_generation_failure(session, generation_task: GenerationTask, message: str) -> None:
+    generation_task.status = JobStatus.failed
+    generation_task.error_message = message
+    if generation_task.shot:
+        generation_task.shot.status = ShotStatus.failed
+    _sync_project_status(session, generation_task.project_id)
+
+
 @celery_app.task(name="video_platform.ping")
 def ping() -> str:
     return "pong"
@@ -47,8 +83,7 @@ def submit_seedance_generation_task(task_id: str) -> dict[str, str]:
         if generation_task is None:
             return {"status": "missing", "task_id": task_id}
         if not settings.ark_api_key:
-            generation_task.status = JobStatus.failed
-            generation_task.error_message = "ARK_API_KEY is required to submit Seedance tasks."
+            _mark_generation_failure(session, generation_task, "ARK_API_KEY is required to submit Seedance tasks.")
             session.commit()
             return {"status": "failed", "task_id": task_id}
 
@@ -67,8 +102,7 @@ def submit_seedance_generation_task(task_id: str) -> dict[str, str]:
             }
             session.commit()
         except Exception as exc:
-            generation_task.status = JobStatus.failed
-            generation_task.error_message = str(exc)
+            _mark_generation_failure(session, generation_task, str(exc))
             session.commit()
             return {"status": "failed", "task_id": task_id}
 
@@ -84,8 +118,7 @@ def poll_seedance_generation_task(task_id: str, attempt: int = 1) -> dict[str, s
         if generation_task is None:
             return {"status": "missing", "task_id": task_id}
         if generation_task.provider_task_id is None:
-            generation_task.status = JobStatus.failed
-            generation_task.error_message = "Seedance provider task id is missing."
+            _mark_generation_failure(session, generation_task, "Seedance provider task id is missing.")
             session.commit()
             return {"status": "failed", "task_id": task_id}
 
@@ -99,8 +132,11 @@ def poll_seedance_generation_task(task_id: str, attempt: int = 1) -> dict[str, s
             }
 
             if is_provider_terminal_failure(provider_status):
-                generation_task.status = JobStatus.failed
-                generation_task.error_message = extract_error_message(response_payload) or "Seedance generation failed."
+                _mark_generation_failure(
+                    session,
+                    generation_task,
+                    extract_error_message(response_payload) or "Seedance generation failed.",
+                )
                 session.commit()
                 return {"status": "failed", "task_id": task_id}
 
@@ -128,14 +164,14 @@ def poll_seedance_generation_task(task_id: str, attempt: int = 1) -> dict[str, s
                 if generation_task.shot:
                     generation_task.shot.status = ShotStatus.ready
                     generation_task.shot.result_asset_id = asset.id
+                _sync_project_status(session, generation_task.project_id)
                 session.commit()
                 return {"status": "succeeded", "task_id": task_id}
 
             generation_task.status = JobStatus.running
             session.commit()
         except Exception as exc:
-            generation_task.status = JobStatus.failed
-            generation_task.error_message = str(exc)
+            _mark_generation_failure(session, generation_task, str(exc))
             session.commit()
             return {"status": "failed", "task_id": task_id}
 
@@ -143,8 +179,7 @@ def poll_seedance_generation_task(task_id: str, attempt: int = 1) -> dict[str, s
         with SessionLocal() as session:
             generation_task = session.get(GenerationTask, task_uuid)
             if generation_task:
-                generation_task.status = JobStatus.failed
-                generation_task.error_message = "Seedance polling exceeded max attempts."
+                _mark_generation_failure(session, generation_task, "Seedance polling exceeded max attempts.")
                 session.commit()
         return {"status": "timeout", "task_id": task_id}
 
@@ -163,8 +198,7 @@ def submit_seedream_image_task(task_id: str) -> dict[str, str]:
         if generation_task is None:
             return {"status": "missing", "task_id": task_id}
         if not settings.ark_api_key:
-            generation_task.status = JobStatus.failed
-            generation_task.error_message = "ARK_API_KEY is required to submit Seedream image tasks."
+            _mark_generation_failure(session, generation_task, "ARK_API_KEY is required to submit Seedream image tasks.")
             session.commit()
             return {"status": "failed", "task_id": task_id}
 
@@ -218,11 +252,11 @@ def submit_seedream_image_task(task_id: str) -> dict[str, str]:
             if generation_task.shot and generation_task.request_payload.get("attach_to_shot", True):
                 generation_task.shot.status = ShotStatus.ready
                 generation_task.shot.result_asset_id = asset.id
+            _sync_project_status(session, generation_task.project_id)
             session.commit()
             return {"status": "succeeded", "task_id": task_id}
         except Exception as exc:
-            generation_task.status = JobStatus.failed
-            generation_task.error_message = str(exc)
+            _mark_generation_failure(session, generation_task, str(exc))
             session.commit()
             return {"status": "failed", "task_id": task_id}
 
@@ -266,13 +300,12 @@ def run_render_job(render_job_id: str) -> dict[str, str]:
             render_job.output_uri = output_uri
             project = render_job.project
             project.final_video_url = output_uri
-            project.status = ProjectStatus.completed
+            _sync_project_status(session, render_job.project_id)
             session.commit()
             return {"status": "succeeded", "render_job_id": render_job_id}
         except Exception as exc:
             render_job.status = JobStatus.failed
             render_job.error_message = str(exc)
-            if render_job.project:
-                render_job.project.status = ProjectStatus.failed
+            _sync_project_status(session, render_job.project_id)
             session.commit()
             return {"status": "failed", "render_job_id": render_job_id}
