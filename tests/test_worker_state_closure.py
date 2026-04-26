@@ -211,7 +211,7 @@ def test_submit_seedream_failure_marks_shot_and_project_failed(monkeypatch: pyte
     task = make_generation_task(project, shot, provider="volcengine_seedream")
     session = FakeWorkerSession(projects=[project], shots=[shot], generation_tasks=[task])
     install_fake_session(monkeypatch, session)
-    monkeypatch.setattr(worker_router.settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(worker_router.settings, "seedream_api_key", "test-key")
 
     class FakeSeedreamClient:
         def generate_image(self, request_payload: dict[str, Any]) -> dict[str, Any]:
@@ -276,7 +276,7 @@ def test_submit_seedream_success_promotes_project_to_assembling(monkeypatch: pyt
     )
     session = FakeWorkerSession(projects=[project], shots=[shot], generation_tasks=[task])
     install_fake_session(monkeypatch, session)
-    monkeypatch.setattr(worker_router.settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(worker_router.settings, "seedream_api_key", "test-key")
     monkeypatch.setattr(worker_router.settings, "local_render_dir", str(tmp_path))
     monkeypatch.setattr(worker_router, "upload_file", lambda *args, **kwargs: "minio://video-platform/seedream/output.png")
 

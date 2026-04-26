@@ -127,7 +127,7 @@ def test_submit_seedream_image_task_promotes_project_to_assembling(monkeypatch, 
             return destination
 
     monkeypatch.setattr(worker_module, "SessionLocal", lambda: fake_session_local(session))
-    monkeypatch.setattr(worker_module.settings, "ark_api_key", "test-key")
+    monkeypatch.setattr(worker_module.settings, "seedream_api_key", "test-key")
     monkeypatch.setattr(worker_module.settings, "local_render_dir", str(tmp_path))
     monkeypatch.setattr(worker_module, "SeedreamClient", FakeSeedreamClient)
     monkeypatch.setattr(worker_module, "upload_file", lambda *args, **kwargs: "minio://video-platform/seedream/test.png")
