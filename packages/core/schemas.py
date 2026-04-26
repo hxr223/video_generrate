@@ -13,7 +13,8 @@ from packages.core.models import (
     UPLOADABLE_ASSET_KINDS,
 )
 
-ALLOWED_PROJECT_DURATIONS = {3, 5, 9, 15}
+ALLOWED_PROJECT_DURATIONS = {4, 5, 9, 15}
+ALLOWED_PROJECT_DURATIONS_LABEL = "4, 5, 9, or 15 seconds"
 
 
 class ProjectFields(BaseModel):
@@ -33,7 +34,7 @@ class ProjectBase(ProjectFields):
     @classmethod
     def validate_target_duration(cls, value: int) -> int:
         if value not in ALLOWED_PROJECT_DURATIONS:
-            raise ValueError("target_duration must be one of 3, 5, 9, or 15 seconds")
+            raise ValueError(f"target_duration must be one of {ALLOWED_PROJECT_DURATIONS_LABEL}")
         return value
 
 
@@ -60,7 +61,7 @@ class ProjectUpdate(BaseModel):
         if value is None:
             return value
         if value not in ALLOWED_PROJECT_DURATIONS:
-            raise ValueError("target_duration must be one of 3, 5, 9, or 15 seconds")
+            raise ValueError(f"target_duration must be one of {ALLOWED_PROJECT_DURATIONS_LABEL}")
         return value
 
 
@@ -97,7 +98,7 @@ class ProjectScriptDraftRequest(BaseModel):
     @classmethod
     def validate_target_duration(cls, value: int) -> int:
         if value not in ALLOWED_PROJECT_DURATIONS:
-            raise ValueError("target_duration must be one of 3, 5, 9, or 15 seconds")
+            raise ValueError(f"target_duration must be one of {ALLOWED_PROJECT_DURATIONS_LABEL}")
         return value
 
 

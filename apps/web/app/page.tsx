@@ -292,7 +292,7 @@ export default function Home() {
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [shotCount, setShotCount] = useState("4");
+  const [shotCount, setShotCount] = useState("1");
   const [attachGeneratedImages, setAttachGeneratedImages] = useState(true);
   const [renderProfile, setRenderProfile] = useState("social_1080p");
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
@@ -317,7 +317,7 @@ export default function Home() {
     [projects, selectedProjectId]
   );
 
-  const allowedDurations = publicSettings?.allowed_project_durations ?? [3, 5, 9, 15];
+  const allowedDurations = publicSettings?.allowed_project_durations ?? [4, 5, 9, 15];
   const renderProfiles = publicSettings?.render_profiles ?? ["social_1080p", "landscape_1080p", "master_prores"];
   const canAttachUploadedAsset = uploadKind === "reference_image" || uploadKind === "reference_video";
   const readyShotCount = shots.filter((shot) => shot.status === "ready" || Boolean(shot.result_asset_id)).length;

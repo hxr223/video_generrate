@@ -124,7 +124,7 @@ def test_get_public_settings_exposes_runtime_flags() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["allowed_project_durations"] == [3, 5, 9, 15]
+    assert payload["allowed_project_durations"] == [4, 5, 9, 15]
     assert "social_1080p" in payload["render_profiles"]
     assert "seedance" in payload["models"]
 

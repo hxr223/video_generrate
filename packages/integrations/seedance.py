@@ -16,18 +16,18 @@ class SeedanceClientError(RuntimeError):
 
 def build_seedance_request(project: Project, shot: Shot, model: str | None = None) -> dict[str, Any]:
     return {
-        "provider": "volcengine_seedance",
-        "base_url": get_seedance_base_url(),
         "model": model or settings.seedance_model,
-        "prompt": shot.prompt,
-        "duration": shot.duration_seconds,
+        "content": [
+            {
+                "type": "text",
+                "text": shot.prompt,
+            }
+        ],
+        "resolution": "720p",
         "ratio": project.target_ratio,
-        "language": project.language,
-        "metadata": {
-            "project_id": str(project.id),
-            "shot_id": str(shot.id),
-            "shot_title": shot.title,
-        },
+        "duration": shot.duration_seconds,
+        "generate_audio": True,
+        "watermark": False,
     }
 
 
@@ -146,7 +146,10 @@ class SeedanceClient:
             json=request_payload,
             timeout=self.timeout_seconds,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise SeedanceClientError(_format_http_error(exc)) from exc
         payload = response.json()
         if not isinstance(payload, dict):
             raise SeedanceClientError("Seedance submit response was not a JSON object")
@@ -158,7 +161,10 @@ class SeedanceClient:
             headers=_auth_headers(),
             timeout=self.timeout_seconds,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise SeedanceClientError(_format_http_error(exc)) from exc
         payload = response.json()
         if not isinstance(payload, dict):
             raise SeedanceClientError("Seedance query response was not a JSON object")
@@ -172,3 +178,9 @@ class SeedanceClient:
                 for chunk in response.iter_bytes():
                     output.write(chunk)
         return destination
+
+
+def _format_http_error(exc: httpx.HTTPStatusError) -> str:
+    response = exc.response
+    body = response.text[:1200]
+    return f"Seedance HTTP {response.status_code} for {response.url}: {body}"
