@@ -38,6 +38,17 @@ class AssetKind(str, enum.Enum):
     export = "export"
 
 
+UPLOADABLE_ASSET_KINDS: tuple[AssetKind, ...] = (
+    AssetKind.reference_image,
+    AssetKind.reference_video,
+    AssetKind.audio,
+    AssetKind.subtitle,
+)
+
+
+SHOT_BINDABLE_ASSET_KINDS: tuple[AssetKind, ...] = UPLOADABLE_ASSET_KINDS
+
+
 class JobStatus(str, enum.Enum):
     queued = "queued"
     running = "running"
@@ -109,6 +120,7 @@ class Shot(Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="shots")
+    assets: Mapped[list["Asset"]] = relationship(back_populates="shot")
     generation_tasks: Mapped[list["GenerationTask"]] = relationship(
         back_populates="shot",
         cascade="all, delete-orphan",
@@ -124,6 +136,12 @@ class Asset(Base):
         ForeignKey("projects.id", ondelete="CASCADE"),
         index=True,
     )
+    shot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     kind: Mapped[AssetKind] = mapped_column(Enum(AssetKind, name="asset_kind"))
     label: Mapped[str] = mapped_column(String(200))
     uri: Mapped[str] = mapped_column(Text)
@@ -134,6 +152,7 @@ class Asset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[Project] = relationship(back_populates="assets")
+    shot: Mapped[Shot | None] = relationship(back_populates="assets")
 
 
 class GenerationTask(Base):

@@ -2,20 +2,39 @@ from datetime import datetime
 from typing import Any
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.core.models import AssetKind, JobStatus, ProjectStatus, ShotStatus
+from packages.core.models import (
+    AssetKind,
+    JobStatus,
+    ProjectStatus,
+    SHOT_BINDABLE_ASSET_KINDS,
+    ShotStatus,
+    UPLOADABLE_ASSET_KINDS,
+)
+
+ALLOWED_PROJECT_DURATIONS = {3, 5, 9, 15}
 
 
-class ProjectBase(BaseModel):
+class ProjectFields(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     topic: str = Field(min_length=1)
-    target_duration: int = Field(ge=4, le=600)
+    target_duration: int
     target_ratio: str = Field(default="9:16", max_length=16)
     language: str = Field(default="en", max_length=32)
     style: str = Field(default="documentary", max_length=80)
     platform: str = Field(default="shorts", max_length=80)
     script_text: str | None = None
+
+
+class ProjectBase(ProjectFields):
+
+    @field_validator("target_duration")
+    @classmethod
+    def validate_target_duration(cls, value: int) -> int:
+        if value not in ALLOWED_PROJECT_DURATIONS:
+            raise ValueError("target_duration must be one of 3, 5, 9, or 15 seconds")
+        return value
 
 
 class ProjectCreate(ProjectBase):
@@ -25,7 +44,7 @@ class ProjectCreate(ProjectBase):
 class ProjectUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     topic: str | None = Field(default=None, min_length=1)
-    target_duration: int | None = Field(default=None, ge=4, le=600)
+    target_duration: int | None = None
     target_ratio: str | None = Field(default=None, max_length=16)
     language: str | None = Field(default=None, max_length=32)
     style: str | None = Field(default=None, max_length=80)
@@ -35,8 +54,17 @@ class ProjectUpdate(BaseModel):
     optimized_prompt: str | None = None
     prompt_optimization_notes: list[str] | None = None
 
+    @field_validator("target_duration")
+    @classmethod
+    def validate_target_duration(cls, value: int | None) -> int | None:
+        if value is None:
+            return value
+        if value not in ALLOWED_PROJECT_DURATIONS:
+            raise ValueError("target_duration must be one of 3, 5, 9, or 15 seconds")
+        return value
 
-class ProjectRead(ProjectBase):
+
+class ProjectRead(ProjectFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -49,6 +77,33 @@ class ProjectRead(ProjectBase):
     prompt_optimization_notes: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("prompt_optimization_notes", mode="before")
+    @classmethod
+    def coerce_prompt_optimization_notes(cls, value: list[str] | None) -> list[str]:
+        return value or []
+
+
+class ProjectScriptDraftRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    topic: str = Field(min_length=1)
+    target_duration: int
+    target_ratio: str = Field(default="9:16", max_length=16)
+    language: str = Field(default="zh", max_length=32)
+    style: str = Field(default="documentary", max_length=80)
+    platform: str = Field(default="shorts", max_length=80)
+
+    @field_validator("target_duration")
+    @classmethod
+    def validate_target_duration(cls, value: int) -> int:
+        if value not in ALLOWED_PROJECT_DURATIONS:
+            raise ValueError("target_duration must be one of 3, 5, 9, or 15 seconds")
+        return value
+
+
+class ProjectScriptDraftRead(BaseModel):
+    script_text: str
+    beats: list[str] = Field(default_factory=list)
 
 
 class PromptOptimizeRequest(BaseModel):
@@ -88,6 +143,7 @@ class PlanShotsRequest(BaseModel):
 
 
 class AssetCreate(BaseModel):
+    shot_id: uuid.UUID | None = None
     kind: AssetKind
     label: str = Field(min_length=1, max_length=200)
     uri: str = Field(min_length=1)
@@ -103,6 +159,45 @@ class AssetRead(AssetCreate):
     id: uuid.UUID
     project_id: uuid.UUID
     created_at: datetime
+
+
+class PublicSettingsServicesRead(BaseModel):
+    api_base_url: str
+    ark_base_url: str
+    seedance_base_url: str
+    seedream_base_url: str
+    minio_endpoint: str
+    object_storage_public_base_url: str | None = None
+    minio_bucket: str
+
+
+class PublicSettingsProvidersRead(BaseModel):
+    seedance_configured: bool
+    seedream_configured: bool
+
+
+class PublicSettingsModelsRead(BaseModel):
+    seedance: str
+    seedream: str
+    seedream_size: str
+
+
+class PublicSettingsCapabilitiesRead(BaseModel):
+    upload_asset_kinds: list[str] = Field(default_factory=lambda: [kind.value for kind in UPLOADABLE_ASSET_KINDS])
+    shot_bindable_asset_kinds: list[str] = Field(
+        default_factory=lambda: [kind.value for kind in SHOT_BINDABLE_ASSET_KINDS]
+    )
+
+
+class PublicSettingsRead(BaseModel):
+    app_name: str
+    app_env: str
+    allowed_project_durations: list[int]
+    render_profiles: list[str]
+    providers: PublicSettingsProvidersRead
+    models: PublicSettingsModelsRead
+    services: PublicSettingsServicesRead
+    capabilities: PublicSettingsCapabilitiesRead
 
 
 class GenerationTaskCreate(BaseModel):
@@ -170,3 +265,43 @@ class RenderJobRead(BaseModel):
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class PipelineRunRequest(BaseModel):
+    optimize: bool | None = None
+    plan: bool | None = None
+    image: bool | None = None
+    video: bool | None = None
+    timeline: bool | None = None
+    render: bool | None = None
+    run_render: bool | None = None
+    creative_direction: str | None = Field(default=None, max_length=500)
+    preserve_script: bool = True
+    replace_existing: bool = True
+    image_model: str | None = Field(default=None, max_length=160)
+    video_model: str | None = Field(default=None, max_length=160)
+    attach_images_to_shots: bool = True
+    render_profile: str | None = Field(default=None, max_length=80)
+    shot_count: int = Field(default=4, ge=1, le=12)
+    replace_existing_shots: bool = False
+    optimize_prompt: bool = True
+    create_image_tasks: bool = False
+    create_video_tasks: bool = True
+    attach_generated_images_to_shots: bool = True
+    build_timeline_when_ready: bool = True
+    create_render_job_when_ready: bool = True
+    run_render_when_ready: bool = True
+    profile: str | None = Field(default=None, max_length=80)
+
+
+class PipelineRunRead(BaseModel):
+    project_id: uuid.UUID
+    project_status: ProjectStatus
+    triggered_steps: list[str] = Field(default_factory=list)
+    skipped_steps: list[str] = Field(default_factory=list)
+    waiting_on: list[str] = Field(default_factory=list)
+    shot_count: int = 0
+    ready_shot_count: int = 0
+    generation_task_counts: dict[str, int] = Field(default_factory=dict)
+    latest_timeline_id: uuid.UUID | None = None
+    latest_render_job_id: uuid.UUID | None = None

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.app.routers.pipeline import router as pipeline_router
 from apps.api.app.routers.projects import router as projects_router
+from apps.api.app.routers.settings import router as settings_router
 from packages.core.settings import settings
 
 
@@ -21,6 +22,7 @@ app.add_middleware(
 
 app.include_router(projects_router)
 app.include_router(pipeline_router)
+app.include_router(settings_router)
 
 
 @app.get("/health")
